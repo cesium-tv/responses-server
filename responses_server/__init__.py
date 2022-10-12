@@ -1,9 +1,8 @@
-import time
 import logging
 import threading
-import http.client
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlencode
 from http.server import BaseHTTPRequestHandler, HTTPServer as BaseHTTPServer
+from functools import partialmethod
 
 from requests import Request
 from requests.exceptions import ConnectionError
@@ -27,11 +26,12 @@ class HTTPRequestHandler(BaseHTTPRequestHandler):
         }
         content_length = self.headers.get('Content-Length', 0)
         if content_length:
-            kwargs['data'] = self.rfile.read(content_length)
+            kwargs['data'] = self.rfile.read(int(content_length)).decode()
         request = Request(self.command, url, **kwargs).prepare()
 
         try:
-            response = self.server._responses.responses._on_request(adapter, request)
+            response = self.server._responses.responses._on_request(
+                adapter, request)
 
         except ConnectionError:
             LOGGER.debug('Non-matching request')
@@ -46,7 +46,12 @@ class HTTPRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(response.content)
 
     # Handle all HTTP verbs using our universal handler.
-    do_GET = do_POST = do_HEAD = do_PUT = handle_any
+    do_GET = do_POST = do_HEAD = do_PUT = do_OPTIONS = do_PATCH = do_DELETE = \
+        handle_any
+
+    # TODO: Enable logging with flag?
+    def log_message(self, format, *args):
+        pass
 
 
 class HTTPServer(BaseHTTPServer):
@@ -71,22 +76,31 @@ class ResponsesServer:
     def address(self):
         return self._address
 
-    def url(self, path=None):
+    def url(self, path=None, querystring=None):
         url = f'http://{self.address}:{self.port}/'
         if path:
             url = urljoin(url, path)
+        if isinstance(querystring, dict):
+            querystring = urlencode(querystring)
+        if querystring:
+            url += '?' + querystring
         return url
 
     def start(self, **kwargs):
-        self._server = HTTPServer((self._address, self._port), HTTPRequestHandler, self)
+        if self._server is not None:
+            LOGGER.error('Server already running at: %s', self.url())
+            return
+        self._server = HTTPServer(
+            (self._address, self._port), HTTPRequestHandler, self)
         self._thread = threading.Thread(target=self._run, **kwargs)
         self._thread.start()
-        LOGGER.info('Server running at: %s', self.url)
+        LOGGER.info('Server running at: %s', self.url())
 
     def stop(self):
         if self._server is None:
             return
         self._server.shutdown()
+        self._server.server_close()
         self._server = None
         LOGGER.info('Server stopped')
 
@@ -97,3 +111,17 @@ class ResponsesServer:
     def _run(self):
         LOGGER.debug('Serving forever in thread %i', threading.get_ident())
         self._server.serve_forever()
+
+    def add(self, *args, **kwargs):
+        return self.responses.add(*args, **kwargs)
+
+    delete = partialmethod(add, 'DELETE')
+    get = partialmethod(add, 'GET')
+    head = partialmethod(add, 'HEAD')
+    options = partialmethod(add, 'OPTIONS')
+    patch = partialmethod(add, 'PATCH')
+    post = partialmethod(add, 'POST')
+    put = partialmethod(add, 'PUT')
+
+    def reset(self):
+        self.responses.reset()
