@@ -61,12 +61,12 @@ class HTTPServer(BaseHTTPServer):
 
 
 class ResponsesServer:
-    def __init__(self, address='127.0.0.1', port=0):
+    def __init__(self, address='127.0.0.1', port=0, responses_kwargs={}):
         self._address = address
         self._port = port
         self._thread = None
         self._server = None
-        self.responses = RequestsMock()
+        self.responses = RequestsMock(**responses_kwargs)
 
     @property
     def port(self):
