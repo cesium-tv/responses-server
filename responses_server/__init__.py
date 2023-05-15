@@ -19,6 +19,7 @@ class HTTPRequestHandler(BaseHTTPRequestHandler):
         super().__init__(request, client_address, server)
 
     def handle_any(self):
+        LOGGER.debug('Request received')
         url = self.server._responses.url(self.path)
         adapter = HTTPAdapter()
         kwargs = {
@@ -34,11 +35,12 @@ class HTTPRequestHandler(BaseHTTPRequestHandler):
                 adapter, request)
 
         except ConnectionError:
-            LOGGER.debug('Non-matching request')
+            LOGGER.debug('Unmatched request')
             self.send_response(404)
             self.end_headers()
 
         else:
+            LOGGER.debug('Matched request')
             self.send_response(response.status_code)
             for name, value in response.headers.items():
                 self.send_header(name, value)
